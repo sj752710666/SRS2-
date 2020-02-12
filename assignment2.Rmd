@@ -1,0 +1,473 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r}
+library(EQL)
+library(pracma)
+library(emdbook)
+library(tibble)
+library(tidyverse)
+library(ggplot2)
+
+set.seed(1)
+
+osde <- function(t, x, qn) {
+  n <- length(x)
+  a <- numeric(qn)
+  for(j in 1:qn){
+    a[j] <- (1/n) * sum((sqrt(pi) * 2^j * factorial(j))^(-0.5) * exp(-(x^2/2)) * hermite(x, j, prob = FALSE))
+  }
+  f_hat <- (1/n) * sum((sqrt(pi))^(-0.5) * exp(-(x^2 / 2)) * hermite(x, 0, prob = FALSE)) * (sqrt(pi))^(-0.5) * exp(-(t^2/2)) * hermite(t, 0, prob = FALSE)
+  for(i in 1:qn){
+    f_hat <- f_hat + a[i] * (sqrt(pi) * 2^i * factorial(i))^(-0.5) * exp(-(t^2/2)) * hermite(t, i, prob = FALSE)
+  }
+  return(f_hat)
+}
+
+osde_2d <- function(t, x, qn) {
+  n <- nrow(x)
+  a <- numeric(qn)
+  for(j in 1:qn){
+    a[j] <- (1/n) * sum((sqrt(pi) * 2^j * factorial(j))^(-1) * exp(-(x[,1]^2 + x[,2]^2)/2) * hermite(x[,1], j, prob = FALSE) * hermite(x[,2], j, prob = FALSE))
+  }
+  f_hat <- (1/n) * sum((sqrt(pi))^(-1) * exp(-(x[,1]^2 + x[,2]^2)/2) * hermite(x[,1], j, prob = FALSE) * hermite(x[,2], j, prob = FALSE)) * (sqrt(pi))^(-1) * exp(-(t[1]^2 + t[2]^2)/2) * hermite(t[1], 0, prob = FALSE) * hermite(t[2], 0, prob = FALSE)
+  for(i in 1:qn){
+    f_hat <- f_hat + a[i] * (sqrt(pi) * 2^i * factorial(i))^(-1) * exp(-(t[1]^2 + t[2]^2)/2) * hermite(t[1], i, prob = FALSE) * hermite(t[2], i, prob = FALSE)
+  }
+  return(f_hat)
+}
+
+```
+
+```{r}
+
+N <- 1000
+s <- seq(-5, 5, 0.01)
+samples <- rnorm(N)
+
+plot(s, dnorm(s), type = "l", bty = "n", ylim = c(0, 0.6), xlab = "Two estimators for standard normal distribution", ylab = "Probability")
+lines(density(samples), col = "red")
+lines(s, osde(s, samples, 20), col = "blue")
+legend("topright", lty = c(1, 1), col = c("black", "red", "blue"),
+       legend = c("real density", "KDE", "OSDE"))
+
+```
+
+```{r}
+
+N <- 1000
+s <- seq(-5, 5, 0.01)
+samples <- rcauchy(N, 0, 0.5)
+
+plot(s, dcauchy(s, 0, 0.5), type = "l", bty = "n", ylim = c(0, 0.8), xlab = "Two estimators for Cauchy(0, 0.5) distribution", ylab = "Probability")
+lines(density(samples), col = "red")
+lines(s, osde(s, samples, 20), col = "blue")
+legend("topright", lty = c(1, 1), col = c("black", "red", "blue"),
+       legend = c("real density", "KDE", "OSDE"))
+
+```
+
+```{r}
+
+N <- 1000
+s <- seq(-10, 10, 0.05)
+components <- sample(1:2, prob = c(0.3, 0.7), size = N, replace = TRUE)
+mus <- c(4, -3)
+sd <- c(1, 1)
+samples <- rnorm(N, mus[components], sd[components])
+
+plot(s, 0.3 * dnorm(s, 4, 1) + 0.7 * dnorm(s, -3, 1), type = "l", bty = "n", ylim = c(0,0.4), xlab="Two estimators for mixture of normal distribution", ylab = "Probability")
+lines(density(samples), col = "red")
+lines(s, osde(s, samples, 20), col = "blue")
+legend("topright", lty = c(1, 1), col = c("black", "red", "blue"),
+       legend = c("real density", "KDE", "OSDE"))
+
+```
+
+
+Monte Carlo
+
+```{r}
+
+R <- 1000
+N <- 250
+ISE_KDE_S1_250 <- numeric(R)
+ISE_OSDE_S1_250 <- numeric(R)
+for (i in 1:R) {
+  samples <- rnorm(N)
+
+  est <- density(samples)
+  ISE_KDE_S1_250[i] <- sfsmisc::integrate.xy(x = est$x, (est$y - dnorm(est$x))^2)
+  
+  osde_ise <- function(x){
+    return((osde(x,samples,10)-dnorm(x))^2)
+  }
+  ISE_OSDE_S1_250[i] <- integrate(osde_ise, lower=-Inf, upper=Inf)$value
+}
+
+boxplot(ISE_KDE_S1_250, ISE_OSDE_S1_250)
+
+```
+
+```{r}
+
+R <- 1000
+N <- 500
+ISE_KDE_S1_500 <- numeric(R)
+ISE_OSDE_S1_500 <- numeric(R)
+for (i in 1:R) {
+  samples <- rnorm(N)
+
+  est <- density(samples)
+  ISE_KDE_S1_500[i] <- sfsmisc::integrate.xy(x = est$x, (est$y - dnorm(est$x))^2)
+  
+  osde_ise <- function(x){
+    return((osde(x,samples,10)-dnorm(x))^2)
+  }
+  ISE_OSDE_S1_500[i] <- integrate(osde_ise, lower=-Inf, upper=Inf)$value
+}
+
+boxplot(ISE_KDE_S1_500, ISE_OSDE_S1_500)
+
+```
+
+```{r}
+
+R <- 1000
+N <- 1000
+ISE_KDE_S1_1000 <- numeric(R)
+ISE_OSDE_S1_1000 <- numeric(R)
+for (i in 1:R) {
+  samples <- rnorm(N)
+
+  est <- density(samples)
+  ISE_KDE_S1_1000[i] <- sfsmisc::integrate.xy(x = est$x, (est$y - dnorm(est$x))^2)
+  
+  osde_ise <- function(x){
+    return((osde(x,samples,10)-dnorm(x))^2)
+  }
+  ISE_OSDE_S1_1000[i] <- integrate(osde_ise, lower=-Inf, upper=Inf)$value
+}
+
+boxplot(ISE_KDE_S1_1000, ISE_OSDE_S1_1000)
+
+```
+
+```{r}
+
+S1 = tibble(
+  KDE_250 = ISE_KDE_S1_250,
+  OSDE_250 = ISE_OSDE_S1_250,
+  KDE_500 = ISE_KDE_S1_500,
+  OSDE_500 = ISE_OSDE_S1_500,
+  KDE_1000 = ISE_KDE_S1_1000,
+  OSDE_1000 = ISE_OSDE_S1_1000
+)%>%
+  pivot_longer(., cols = KDE_250:OSDE_1000,
+               names_to = c("Estimation_method", "sample_size"), names_sep = "_",
+               values_to = "ISE")
+
+ggplot(data = S1, aes(x = sample_size, y = ISE, fill = Estimation_method))+
+  geom_boxplot()+
+  scale_y_continuous()
+
+```
+
+```{r}
+
+R <- 1000
+N <- 250
+ISE_KDE_S2_250 <- numeric(R)
+ISE_OSDE_S2_250 <- numeric(R)
+for (i in 1:R) {
+  samples <- rcauchy(N, 0, 0.5)
+
+  est <- density(samples)
+  ISE_KDE_S2_250[i] <- sfsmisc::integrate.xy(x = est$x, (est$y - dcauchy(est$x, 0, 0.5))^2)
+  
+  osde_ise <- function(x){
+    return((osde(x,samples,10)-dcauchy(x, 0, 0.5))^2)
+  }
+  ISE_OSDE_S2_250[i] <- integrate(osde_ise, lower=-Inf, upper=Inf)$value
+}
+
+boxplot(ISE_KDE_S2_250, ISE_OSDE_S2_250)
+
+```
+
+```{r}
+
+R <- 1000
+N <- 500
+ISE_KDE_S2_500 <- numeric(R)
+ISE_OSDE_S2_500 <- numeric(R)
+for (i in 1:R) {
+  samples <- rcauchy(N, 0, 0.5)
+
+  est <- density(samples)
+  ISE_KDE_S2_500[i] <- sfsmisc::integrate.xy(x = est$x, (est$y - dcauchy(est$x, 0, 0.5))^2)
+  
+  osde_ise <- function(x){
+    return((osde(x,samples,10)-dcauchy(x, 0, 0.5))^2)
+  }
+  ISE_OSDE_S2_500[i] <- integrate(osde_ise, lower=-Inf, upper=Inf)$value
+}
+
+boxplot(ISE_KDE_S2_500, ISE_OSDE_S2_500)
+
+```
+
+```{r}
+
+R <- 1000
+N <- 1000
+ISE_KDE_S2_1000 <- numeric(R)
+ISE_OSDE_S2_1000 <- numeric(R)
+for (i in 1:R) {
+  samples <- rcauchy(N, 0, 0.5)
+
+  est <- density(samples)
+  ISE_KDE_S2_1000[i] <- sfsmisc::integrate.xy(x = est$x, (est$y - dcauchy(est$x, 0, 0.5))^2)
+  
+  osde_ise <- function(x){
+    return((osde(x,samples,10)-dcauchy(x, 0, 0.5))^2)
+  }
+  ISE_OSDE_S2_1000[i] <- integrate(osde_ise, lower=-Inf, upper=Inf)$value
+}
+
+boxplot(ISE_KDE_S2_1000, ISE_OSDE_S2_1000)
+
+```
+
+```{r}
+
+S2 = tibble(
+  KDE_250 = ISE_KDE_S2_250,
+  OSDE_250 = ISE_OSDE_S2_250,
+  KDE_500 = ISE_KDE_S2_500,
+  OSDE_500 = ISE_OSDE_S2_500,
+  KDE_1000 = ISE_KDE_S2_1000,
+  OSDE_1000 = ISE_OSDE_S2_1000
+)%>%
+  pivot_longer(., cols = KDE_250:OSDE_1000,
+               names_to = c("Estimation_method", "sample_size"), names_sep = "_",
+               values_to = "ISE")
+
+ggplot(data = S2, aes(x = sample_size, y = ISE, fill = Estimation_method))+
+  geom_boxplot()+
+  scale_y_continuous()
+
+```
+
+```{r}
+
+R <- 1000
+N <- 250
+ISE_KDE_S3_250 <- numeric(R)
+ISE_OSDE_S3_250 <- numeric(R)
+for (i in 1:R) {
+  components <- sample(1:2, prob = c(0.3, 0.7), size = N, replace = TRUE)
+  mus <- c(4, -3)
+  sd <- c(1, 1)
+  samples <- rnorm(N, mus[components], sd[components])
+
+  est <- density(samples)
+  ISE_KDE_S3_250[i] <- sfsmisc::integrate.xy(x = est$x, (est$y - (0.3 * dnorm(est$x, 4, 1) + 0.7 * dnorm(est$x, -3, 1)))^2)
+  
+  osde_ise <- function(x){
+    return((osde(x,samples,10)-(0.3 * dnorm(x, 4, 1) + 0.7 * dnorm(x, -3, 1)))^2)
+  }
+  ISE_OSDE_S3_250[i] <- integrate(osde_ise, lower=-Inf, upper=Inf)$value
+}
+
+boxplot(ISE_KDE_S3_250, ISE_OSDE_S3_250)
+
+```
+
+```{r}
+
+R <- 1000
+N <- 500
+ISE_KDE_S3_500 <- numeric(R)
+ISE_OSDE_S3_500 <- numeric(R)
+for (i in 1:R) {
+  components <- sample(1:2, prob = c(0.3, 0.7), size = N, replace = TRUE)
+  mus <- c(4, -3)
+  sd <- c(1, 1)
+  samples <- rnorm(N, mus[components], sd[components])
+
+  est <- density(samples)
+  ISE_KDE_S3_500[i] <- sfsmisc::integrate.xy(x = est$x, (est$y - (0.3 * dnorm(est$x, 4, 1) + 0.7 * dnorm(est$x, -3, 1)))^2)
+  
+  osde_ise <- function(x){
+    return((osde(x,samples,10)-(0.3 * dnorm(x, 4, 1) + 0.7 * dnorm(x, -3, 1)))^2)
+  }
+  ISE_OSDE_S3_500[i] <- integrate(osde_ise, lower=-Inf, upper=Inf)$value
+}
+
+boxplot(ISE_KDE_S3_500, ISE_OSDE_S3_500)
+
+```
+
+```{r}
+
+R <- 1000
+N <- 1000
+ISE_KDE_S3_1000 <- numeric(R)
+ISE_OSDE_S3_1000 <- numeric(R)
+for (i in 1:R) {
+  components <- sample(1:2, prob = c(0.3, 0.7), size = N, replace = TRUE)
+  mus <- c(4, -3)
+  sd <- c(1, 1)
+  samples <- rnorm(N, mus[components], sd[components])
+
+  est <- density(samples)
+  ISE_KDE_S3_1000[i] <- sfsmisc::integrate.xy(x = est$x, (est$y - (0.3 * dnorm(est$x, 4, 1) + 0.7 * dnorm(est$x, -3, 1)))^2)
+  
+  osde_ise <- function(x){
+    return((osde(x,samples,10)-(0.3 * dnorm(x, 4, 1) + 0.7 * dnorm(x, -3, 1)))^2)
+  }
+  ISE_OSDE_S3_1000[i] <- integrate(osde_ise, lower=-Inf, upper=Inf)$value
+}
+
+boxplot(ISE_KDE_S3_1000, ISE_OSDE_S3_1000)
+
+```
+
+```{r}
+
+S3 = tibble(
+  KDE_250 = ISE_KDE_S3_250,
+  OSDE_250 = ISE_OSDE_S3_250,
+  KDE_500 = ISE_KDE_S3_500,
+  OSDE_500 = ISE_OSDE_S3_500,
+  KDE_1000 = ISE_KDE_S3_1000,
+  OSDE_1000 = ISE_OSDE_S3_1000
+)%>%
+  pivot_longer(., cols = KDE_250:OSDE_1000,
+               names_to = c("Estimation_method", "sample_size"), names_sep = "_",
+               values_to = "ISE")
+
+ggplot(data = S3, aes(x = sample_size, y = ISE, fill = Estimation_method))+
+  geom_boxplot()+
+  scale_y_continuous()
+
+```
+
+```{r}
+
+R <- 1000
+N <- 250
+ISE_KDE_S4_250 <- numeric(R)
+ISE_OSDE_S4_250 <- numeric(R)
+for (i in 1:R) {
+  components <- sample(1:2, prob = c(0.3, 0.7), size = N, replace = TRUE)
+  mus <- c(4, -3)
+  sd <- c(1, 1)
+  samples1 <- rnorm(N, mus[components], sd[components])
+  samples2 <- rnorm(N, mus[components], sd[components])
+
+  est1 <- density(samples1)
+  splxy1 = splinefun(est1$x, est1$y)
+  est2 <- density(samples2)
+  splxy2 = splinefun(est2$x, est2$y)
+  ISE_KDE_f <- function(x, y){
+    return((splxy1(x) * splxy2(y) - 0.3 * dnorm(x, 4, 1) * dnorm(y, 4, 1) - 0.7 * dnorm(x, -3, 1) * dnorm(y, -3, 1))^2)
+  }
+  ISE_KDE_S4_250[i] <- integral2(ISE_KDE_f, min(samples1), max(samples1), min(samples2), max(samples2))$Q
+  
+  osde_ise_2 <- function(x, y){
+    return((osde(x, samples1, 10) * osde(y,samples2, 10) - 0.3 * dnorm(x, 4, 1) * dnorm(y, 4, 1) - 0.7 * dnorm(x, -3, 1) * dnorm(y, -3, 1))^2)
+  }
+  ISE_OSDE_S4_250[i] <- integral2(osde_ise_2, min(samples1), max(samples1), min(samples2), max(samples2))$Q
+}
+
+boxplot(ISE_KDE_S4_250, ISE_OSDE_S4_250)
+
+```
+
+```{r}
+
+R <- 1000
+N <- 500
+ISE_KDE_S4_500 <- numeric(R)
+ISE_OSDE_S4_500 <- numeric(R)
+for (i in 1:R) {
+  components <- sample(1:2, prob = c(0.3, 0.7), size = N, replace = TRUE)
+  mus <- c(4, -3)
+  sd <- c(1, 1)
+  samples1 <- rnorm(N, mus[components], sd[components])
+  samples2 <- rnorm(N, mus[components], sd[components])
+
+  est1 <- density(samples1)
+  splxy1 = splinefun(est1$x, est1$y)
+  est2 <- density(samples2)
+  splxy2 = splinefun(est2$x, est2$y)
+  ISE_KDE_f <- function(x, y){
+    return((splxy1(x) * splxy2(y) - 0.3 * dnorm(x, 4, 1) * dnorm(y, 4, 1) - 0.7 * dnorm(x, -3, 1) * dnorm(y, -3, 1))^2)
+  }
+  ISE_KDE_S4_500[i] <- integral2(ISE_KDE_f, min(samples1), max(samples1), min(samples2), max(samples2))$Q
+  
+  osde_ise_2 <- function(x, y){
+    return((osde(x, samples1, 10) * osde(y,samples2, 10) - 0.3 * dnorm(x, 4, 1) * dnorm(y, 4, 1) - 0.7 * dnorm(x, -3, 1) * dnorm(y, -3, 1))^2)
+  }
+  ISE_OSDE_S4_500[i] <- integral2(osde_ise_2, min(samples1), max(samples1), min(samples2), max(samples2))$Q
+}
+
+boxplot(ISE_KDE_S4_500, ISE_OSDE_S4_500)
+
+```
+
+```{r}
+
+R <- 1000
+N <- 1000
+ISE_KDE_S4_1000 <- numeric(R)
+ISE_OSDE_S4_1000 <- numeric(R)
+for (i in 1:R) {
+  components <- sample(1:2, prob = c(0.3, 0.7), size = N, replace = TRUE)
+  mus <- c(4, -3)
+  sd <- c(1, 1)
+  samples1 <- rnorm(N, mus[components], sd[components])
+  samples2 <- rnorm(N, mus[components], sd[components])
+
+  est1 <- density(samples1)
+  splxy1 = splinefun(est1$x, est1$y)
+  est2 <- density(samples2)
+  splxy2 = splinefun(est2$x, est2$y)
+  ISE_KDE_f <- function(x, y){
+    return((splxy1(x) * splxy2(y) - 0.3 * dnorm(x, 4, 1) * dnorm(y, 4, 1) - 0.7 * dnorm(x, -3, 1) * dnorm(y, -3, 1))^2)
+  }
+  ISE_KDE_S4_1000[i] <- integral2(ISE_KDE_f, min(samples1), max(samples1), min(samples2), max(samples2))$Q
+  
+  osde_ise_2 <- function(x, y){
+    return((osde(x, samples1, 10) * osde(y,samples2, 10) - 0.3 * dnorm(x, 4, 1) * dnorm(y, 4, 1) - 0.7 * dnorm(x, -3, 1) * dnorm(y, -3, 1))^2)
+  }
+  ISE_OSDE_S4_1000[i] <- integral2(osde_ise_2, min(samples1), max(samples1), min(samples2), max(samples2))$Q
+}
+
+boxplot(ISE_KDE_S4_1000, ISE_OSDE_S4_1000)
+
+```
+
+```{r}
+
+S4 = tibble(
+  KDE_250 = ISE_KDE_S4_250,
+  OSDE_250 = ISE_OSDE_S4_250,
+  KDE_500 = ISE_KDE_S4_500,
+  OSDE_500 = ISE_OSDE_S4_500,
+  KDE_1000 = ISE_KDE_S4_1000,
+  OSDE_1000 = ISE_OSDE_S4_1000
+)%>%
+  pivot_longer(., cols = KDE_250:OSDE_1000,
+             names_to = c("Estimation_method", "sample_size"), names_sep = "_",
+             values_to = "ISE")
+
+ggplot(data = S4, aes(x = sample_size, y = ISE, fill = Estimation_method))+
+  geom_boxplot()+
+  scale_y_continuous()
+
+```
